@@ -1,0 +1,5 @@
+1. CSV, bars_1min, bars_30min. signal 30 min
+2. M2 Сигнал. pnl mid
+3. M3 Бэктест baseline. lambda_t
+4. M4 Модель импакта. IS / pnl_net
+5. M5 TWAP исполнение 

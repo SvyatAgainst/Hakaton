@@ -38,7 +38,9 @@ class FormalHackathonPipeline:
         impact_a: float = 0.03,
         aum_rub: float = 50_000_000,
         x_max: float = 0.30,
-        top_n: int = 8,
+        top_n: int | None = None,
+        min_avg_volume: float | None = 100_000,
+        ema_span: int = 6,
         session_start: str = "10:00",
         session_end: str = "18:30",
     ) -> None:
@@ -48,6 +50,8 @@ class FormalHackathonPipeline:
         self.aum_rub = aum_rub
         self.x_max = x_max
         self.top_n = top_n
+        self.min_avg_volume = min_avg_volume
+        self.ema_span = ema_span
         self.session_start = session_start
         self.session_end = session_end
 
@@ -101,16 +105,44 @@ class FormalHackathonPipeline:
         return frame.between_time(self.session_start, self.session_end)
 
     def _select_universe(self, data: MarketData) -> list[str]:
-        liquidity = (data.buy_size + data.sell_size + data.best_bid_size + data.best_ask_size).mean()
-        return liquidity.dropna().sort_values(ascending=False).head(self.top_n).index.tolist()
+        market_volume = self._market_volume(data).mean()
+        book_liquidity = (data.best_bid_size + data.best_ask_size).mean()
+        liquidity = (market_volume + book_liquidity).dropna().sort_values(ascending=False)
+
+        if self.min_avg_volume is not None:
+            liquid_names = market_volume[market_volume >= self.min_avg_volume].dropna().index
+            liquidity = liquidity.loc[liquidity.index.intersection(liquid_names)]
+
+        if self.top_n is not None:
+            liquidity = liquidity.head(self.top_n)
+
+        if liquidity.empty:
+            raise ValueError("No instruments passed the liquidity filter. Lower min_avg_volume or set top_n.")
+
+        return liquidity.index.tolist()
 
     def _build_signal_5min(self, data: MarketData, universe: list[str]) -> pd.DataFrame:
         features = FeatureBuilder(horizon_bars=1, volatility_window=6).build(data)
-        raw_score = features.score[universe].replace([np.inf, -np.inf], np.nan)
+        trade_ema = features.trade_imbalance[universe].ewm(span=self.ema_span, min_periods=1).mean()
+        book_ema = features.book_imbalance[universe].ewm(span=self.ema_span, min_periods=1).mean()
+        trend_ema = features.mid[universe].pct_change(fill_method=None).ewm(span=self.ema_span, min_periods=1).mean()
+
+        trend_rank = trend_ema.rank(axis=1, pct=True).sub(0.5).fillna(0.0)
+        spread_penalty = features.spread_rel[universe].rank(axis=1, pct=True).sub(0.5).fillna(0.0)
+        volatility_penalty = features.volatility[universe].rank(axis=1, pct=True).sub(0.5).fillna(0.0)
+
+        raw_score = (
+            0.45 * trade_ema.fillna(0.0)
+            + 0.35 * book_ema.fillna(0.0)
+            + 0.20 * trend_rank
+            - 0.10 * spread_penalty
+            - 0.10 * volatility_penalty
+        ).replace([np.inf, -np.inf], np.nan)
+        valid_signal = trade_ema.notna() | book_ema.notna() | trend_ema.notna()
         centered = raw_score.sub(raw_score.median(axis=1), axis=0)
         scale = centered.abs().median(axis=1).replace(0, np.nan)
         signal = np.tanh(centered.div(scale, axis=0)).clip(-1, 1)
-        return signal.where(raw_score.notna())
+        return signal.where(valid_signal)
 
     def _backtest_baseline_wide(
         self,
@@ -118,9 +150,7 @@ class FormalHackathonPipeline:
         data_5min: MarketData,
     ) -> tuple[pd.DataFrame, pd.DataFrame]:
         signal = signal_5min_wide.where(signal_5min_wide.abs() >= self.delta, 0.0)
-        positions = signal.shift(1).fillna(0.0)
-        active_abs = positions.abs().sum(axis=1).replace(0, np.nan)
-        positions = positions.div(active_abs, axis=0).fillna(0.0)
+        positions = self._dollar_neutral_positions(signal.shift(1).fillna(0.0))
 
         open_raw = getattr(data_5min, "open", None)
         if open_raw is None:
@@ -130,6 +160,20 @@ class FormalHackathonPipeline:
         bar_return = close_px / open_px - 1
         pnl_mid = positions * bar_return
         return pnl_mid.fillna(0.0), positions
+
+    @staticmethod
+    def _dollar_neutral_positions(signal: pd.DataFrame) -> pd.DataFrame:
+        longs = signal.clip(lower=0.0)
+        shorts = (-signal.clip(upper=0.0))
+
+        long_sum = longs.sum(axis=1).replace(0, np.nan)
+        short_sum = shorts.sum(axis=1).replace(0, np.nan)
+        has_both_sides = long_sum.notna() & short_sum.notna()
+
+        long_weights = longs.div(long_sum, axis=0).fillna(0.0) * 0.5
+        short_weights = shorts.div(short_sum, axis=0).fillna(0.0) * 0.5
+        positions = long_weights - short_weights
+        return positions.where(has_both_sides, 0.0)
 
     def _build_impact_model_wide(self, data_1min: MarketData, universe: list[str]) -> pd.DataFrame:
         volume_mkt = self._market_volume(data_1min)[universe]
