@@ -37,8 +37,10 @@ def load_and_prepare_data():
     final_df = dfs[0]
     for df in dfs[1:]:
         final_df = pd.merge(final_df, df, on=['datetime', 'symbol'], how='outer')
-        
-    return final_df.sort_values(by=['symbol', 'datetime']).reset_index(drop=True)
+    
+    final_df_sorted = final_df.sort_values(by=['symbol', 'datetime']).reset_index(drop=True)
+    print(final_df_sorted)
+    return final_df_sorted
 
 
 def generate_signal(df):
