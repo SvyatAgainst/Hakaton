@@ -1,0 +1,2 @@
+"""Hackathon trading pipeline package."""
+
