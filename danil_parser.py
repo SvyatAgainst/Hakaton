@@ -9,20 +9,14 @@ filenames = {
     "sell_size": "./sell_size_.parquet"
 }
 #если нужно добавить файлы то сюда
-
 dataframes = {
-    "open": pd.read_parquet(filenames["open"]),
-    "close": pd.read_parquet(filenames["close"]),
-    "high": pd.read_parquet(filenames["high"]),
-    "low": pd.read_parquet(filenames["low"]),
-    "buy_size": pd.read_parquet(filenames["buy_size"]),
-    "sell_size": pd.read_parquet(filenames["sell_size"])
+    key: pd.read_parquet(path) 
+    for key, path in filenames.items()
 }
 #если нужно добавить датафреймы то сюда
 
 df_3d = pd.concat(list(dataframes.values()), axis=1, keys=list(dataframes.keys()))
 df_swap = df_3d.swaplevel(0, 1, axis=1).sort_index(axis=1) #выход
-
 # данные будем передавать в pandas dataframe'ах с несколькими уровнями колонок
 # 0 уровень – название акции
 # 1 уровень – по параметру на название акции
