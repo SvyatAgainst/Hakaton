@@ -10,6 +10,7 @@ pip install flask_socketio
 pip install celery
 pip install zipfile
 pip install requests
+pip install redis
 ```
 
 ## запуск сайта:
