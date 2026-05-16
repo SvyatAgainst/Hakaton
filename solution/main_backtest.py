@@ -106,12 +106,14 @@ def print_metrics(portfolio):
 if __name__ == "__main__":
     # 1. Загружаем данные (теперь одной строкой)
     market_data = load_and_prepare_data(data_dir='./data') # Укажи путь к папке с паркетами, если они не в текущей
+    market_data_1min = load_and_prepare_data(data_dir="./data/1min")
     
     # 2. Генерируем сигналы
     market_data = generate_signal(market_data)
+    market_data_1min = generate_signal(market_data_1min)
     
     # 3. Запускаем интегрированный бэктест
-    portfolio_results, detailed_results = run_realistic_backtest(market_data)
+    portfolio_results, detailed_results = run_realistic_backtest(market_data_1min)
     
     # 4. Выводим метрики
     print_metrics(portfolio_results)

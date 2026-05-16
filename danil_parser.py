@@ -17,6 +17,7 @@ dataframes = {
 
 df_3d = pd.concat(list(dataframes.values()), axis=1, keys=list(dataframes.keys()))
 df_swap = df_3d.swaplevel(0, 1, axis=1).sort_index(axis=1) #выход
+
 # данные будем передавать в pandas dataframe'ах с несколькими уровнями колонок
 # 0 уровень – название акции
 # 1 уровень – по параметру на название акции
