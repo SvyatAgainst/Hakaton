@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Загрузка и скачивание файлов</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f4f4f9; color: #333; }
+        .container { max-width: 600px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h2 { color: #4A90E2; }
+        .file-list { list-style: none; padding: 0; }
+        .file-list li { padding: 10px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .btn-download { text-decoration: none; background: #5CB85C; color: white; padding: 5px 10px; border-radius: 4px; font-size: 14px; }
+        .btn-download:hover { background: #4CAE4C; }
+        .upload-form { margin-bottom: 30px; }
+    </style>
+    <script src="https://cdn.socket.io/4.8.3/socket.io.min.js"></script>
+</head>
+<body>
+
+<div class="container">
+    <h2>Загрузить файл</h2>
+    <!-- Важно: enctype="multipart/form-data" обязателен для отправки файлов -->
+    <form class="upload-form" action="/upload" method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" required>
+        <button type="submit">Отправить</button>
+    </form>
+    <hr>
+
+    <button id="start-btn">Start Long Task</button>
+
+    <h2>Выходные файлы</h2>
+    {% if files %}
+        <ul class="file-list">
+            {% for file in files %}
+                <li>
+                    <span>{{ file }}</span>
+                </li>
+            {% endfor %}
+            <a class="btn-download" href="{{ url_for('download_file') }}">Скачать</a>
+        </ul>
+    {% else %}
+        <p>Файлов пока нет. Загрузите что-нибудь!</p>
+    {% endif %}
+</div>
+
+</body>
+<script>
+        // Connect to the Flask-SocketIO server
+        const socket = io();
+
+        const button = document.getElementById('start-btn');
+
+        // 1. Click button to trigger background task
+        button.addEventListener('click', () => {
+            button.disabled = true;
+            socket.emit('start_my_task', { data: 'hello' });
+        });
+
+        // 2. Listen for the 'task_complete' event sent by the Celery worker
+        socket.on('task_complete', (data) => {
+            button.disabled = false;
+            location.reload();
+        });
+    </script>
+</html>
